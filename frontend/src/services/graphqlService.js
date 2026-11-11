@@ -1,30 +1,79 @@
 /**
  * GraphQL Service using Native JavaScript Fetch API
  * 
- * NOTE FOR VIVA:
- * As required by the academic micro-project guidelines, this service demonstrates
- * integrating a GraphQL backend using standard browser Fetch API without heavy
- * external client libraries like Apollo Client or Axios.
- * 
- * Every GraphQL request is an HTTP POST request sending JSON with:
- * {
- *   query: "query or mutation string",
- *   variables: { ... }
- * }
+ * Multi-layer Endpoint Resolution:
+ * 1. User-configured endpoint stored in localStorage (allows 1-click live connection in browser)
+ * 2. VITE_GRAPHQL_URI environment variable
+ * 3. GRAPHQL_URI environment variable (without prefix)
+ * 4. Default fallback: '/graphql' (local Vite proxy or same-domain proxy)
  */
 
-const GRAPHQL_ENDPOINT = import.meta.env.VITE_GRAPHQL_URI || '/graphql';
+export function getGraphqlEndpoint() {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('student_task_graphql_url');
+    if (saved && saved.trim()) {
+      const clean = saved.trim().replace(/\/+$/, '');
+      return clean.endsWith('/graphql') ? clean : `${clean}/graphql`;
+    }
+  }
+
+  if (import.meta.env.VITE_GRAPHQL_URI) {
+    const envUri = import.meta.env.VITE_GRAPHQL_URI.trim().replace(/\/+$/, '');
+    return envUri.endsWith('/graphql') ? envUri : `${envUri}/graphql`;
+  }
+
+  return '/graphql';
+}
+
+export function saveCustomEndpoint(url) {
+  if (typeof window !== 'undefined') {
+    if (!url || !url.trim()) {
+      localStorage.removeItem('student_task_graphql_url');
+    } else {
+      const clean = url.trim().replace(/\/+$/, '');
+      const finalUrl = clean.endsWith('/graphql') ? clean : `${clean}/graphql`;
+      localStorage.setItem('student_task_graphql_url', finalUrl);
+    }
+  }
+}
+
+/**
+ * Ping any GraphQL URL to verify connectivity
+ */
+export async function testBackendConnection(targetUrl) {
+  const clean = (targetUrl || '').trim().replace(/\/+$/, '');
+  const endpoint = clean.endsWith('/graphql') ? clean : `${clean}/graphql`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      query: `query { getTaskStats { total } }`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  const result = await response.json();
+  if (result.errors) {
+    throw new Error(result.errors.map((e) => e.message).join(', '));
+  }
+  return true;
+}
 
 /**
  * Core helper function to send GraphQL queries and mutations via native fetch()
- * 
- * @param {string} query - GraphQL query or mutation string
- * @param {object} variables - Variables object
- * @returns {Promise<any>} Data returned by the GraphQL server
  */
 export async function fetchGraphQL(query, variables = {}) {
+  const endpoint = getGraphqlEndpoint();
+
   try {
-    const response = await fetch(GRAPHQL_ENDPOINT, {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -42,7 +91,6 @@ export async function fetchGraphQL(query, variables = {}) {
 
     const result = await response.json();
 
-    // Check if GraphQL returned application-level errors
     if (result.errors && result.errors.length > 0) {
       const errorMessage = result.errors.map((err) => err.message).join('; ');
       throw new Error(errorMessage);
@@ -50,7 +98,7 @@ export async function fetchGraphQL(query, variables = {}) {
 
     return result.data;
   } catch (error) {
-    console.error('GraphQL Request failed:', error);
+    console.error(`GraphQL Request failed on ${endpoint}:`, error);
     throw error;
   }
 }
@@ -185,9 +233,6 @@ export const TOGGLE_TASK_STATUS_MUTATION = `
    SERVICE FUNCTIONS EXPORTED TO REACT COMPONENTS
    ========================================================================== */
 
-/**
- * Fetch all tasks matching optional filters
- */
 export const fetchTasks = async (filters = {}) => {
   const data = await fetchGraphQL(GET_TASKS_QUERY, {
     status: filters.status || 'All',
@@ -197,25 +242,16 @@ export const fetchTasks = async (filters = {}) => {
   return data.getTasks;
 };
 
-/**
- * Fetch single task by ID
- */
 export const fetchTaskById = async (id) => {
   const data = await fetchGraphQL(GET_TASK_BY_ID_QUERY, { id });
   return data.getTask;
 };
 
-/**
- * Fetch dashboard task counts and statistics
- */
 export const fetchTaskStats = async () => {
   const data = await fetchGraphQL(GET_TASK_STATS_QUERY);
   return data.getTaskStats;
 };
 
-/**
- * Create a new task via GraphQL mutation
- */
 export const createTask = async (taskInput) => {
   const data = await fetchGraphQL(ADD_TASK_MUTATION, {
     title: taskInput.title,
@@ -227,9 +263,6 @@ export const createTask = async (taskInput) => {
   return data.addTask;
 };
 
-/**
- * Update an existing task via GraphQL mutation
- */
 export const editTask = async (id, taskInput) => {
   const data = await fetchGraphQL(UPDATE_TASK_MUTATION, {
     id,
@@ -238,17 +271,11 @@ export const editTask = async (id, taskInput) => {
   return data.updateTask;
 };
 
-/**
- * Delete a task by ID via GraphQL mutation
- */
 export const removeTask = async (id) => {
   const data = await fetchGraphQL(DELETE_TASK_MUTATION, { id });
   return data.deleteTask;
 };
 
-/**
- * Toggle task status between Pending & Completed via GraphQL mutation
- */
 export const toggleStatus = async (id) => {
   const data = await fetchGraphQL(TOGGLE_TASK_STATUS_MUTATION, { id });
   return data.toggleTaskStatus;

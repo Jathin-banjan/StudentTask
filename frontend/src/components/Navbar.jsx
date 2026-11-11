@@ -1,5 +1,5 @@
 import React from 'react';
-import { CheckSquare, Plus, Calendar, GraduationCap } from 'lucide-react';
+import { CheckSquare, Plus, Calendar, GraduationCap, Link2 } from 'lucide-react';
 
 /**
  * Navbar Component (Stateless / Reusable)
@@ -9,7 +9,7 @@ import { CheckSquare, Plus, Calendar, GraduationCap } from 'lucide-react';
  * - Event handling via onClick callback (onOpenAddTask)
  * - Modern clean navigation header
  */
-const Navbar = ({ onOpenAddTask, currentDate }) => {
+const Navbar = ({ onOpenAddTask, currentDate, onOpenConnectModal }) => {
   return (
     <header className="navbar-container">
       <div className="navbar-content">
@@ -29,8 +29,19 @@ const Navbar = ({ onOpenAddTask, currentDate }) => {
           </div>
         </div>
 
-        {/* Right Actions: Date indicator & Add Task Button */}
+        {/* Right Actions: Connect button, Date indicator & Add Task Button */}
         <div className="navbar-actions">
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenConnectModal}
+            title="Configure Render backend URL"
+            style={{ gap: '0.35rem' }}
+          >
+            <Link2 size={14} />
+            <span>Connect Backend</span>
+          </button>
+
           <div className="date-badge" title="Current Academic Date">
             <Calendar size={16} className="date-icon" />
             <span>{currentDate}</span>

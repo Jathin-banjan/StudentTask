@@ -4,6 +4,7 @@ import Statistics from '../components/Statistics';
 import FilterBar from '../components/FilterBar';
 import TaskList from '../components/TaskList';
 import TaskForm from '../components/TaskForm';
+import ConnectBackendModal from '../components/ConnectBackendModal';
 import {
   fetchTasks,
   fetchTaskStats,
@@ -12,7 +13,7 @@ import {
   removeTask,
   toggleStatus,
 } from '../services/graphqlService';
-import { AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, CheckCircle, RefreshCw, Link2 } from 'lucide-react';
 
 /**
  * Dashboard Page (Stateful Component)
@@ -21,7 +22,7 @@ import { AlertCircle, CheckCircle, RefreshCw } from 'lucide-react';
  * - Central state management using useState hook
  * - Side-effect handling & API fetching using useEffect hook
  * - Integration with GraphQL backend using native fetch API
- * - Coordinating child components (Navbar, Statistics, FilterBar, TaskList, TaskForm)
+ * - Coordinating child components (Navbar, Statistics, FilterBar, TaskList, TaskForm, ConnectBackendModal)
  * - Toast notification feedback for success and error handling
  */
 const Dashboard = () => {
@@ -39,9 +40,10 @@ const Dashboard = () => {
   const [priorityFilter, setPriorityFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // State for Add/Edit Modal
+  // State for Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
 
   // State for feedback toast messages
   const [toast, setToast] = useState(null); // { message, type: 'success' | 'error' }
@@ -211,7 +213,11 @@ const Dashboard = () => {
   return (
     <div className="dashboard-layout">
       {/* Navbar Component */}
-      <Navbar onOpenAddTask={handleOpenAddTask} currentDate={currentDate} />
+      <Navbar
+        onOpenAddTask={handleOpenAddTask}
+        currentDate={currentDate}
+        onOpenConnectModal={() => setIsConnectModalOpen(true)}
+      />
 
       {/* Main Content Area */}
       <main className="dashboard-main">
@@ -235,13 +241,23 @@ const Dashboard = () => {
               <h4 className="error-title">Backend Connection Issue</h4>
               <p className="error-desc">{errorMessage}</p>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={loadData}
-            >
-              <RefreshCw size={14} /> Retry
-            </button>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => setIsConnectModalOpen(true)}
+                style={{ gap: '0.35rem' }}
+              >
+                <Link2 size={14} /> Connect Render Backend
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={loadData}
+              >
+                <RefreshCw size={14} /> Retry
+              </button>
+            </div>
           </div>
         )}
 
@@ -271,6 +287,16 @@ const Dashboard = () => {
           />
         </section>
       </main>
+
+      {/* Connect Backend Modal */}
+      <ConnectBackendModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+        onConnected={() => {
+          loadData();
+          showToast('Backend connected successfully!', 'success');
+        }}
+      />
 
       {/* Task Creation & Editing Modal Form */}
       <TaskForm
