@@ -1,0 +1,17 @@
+services:
+  # Student Task Manager GraphQL Backend Server
+  - type: web
+    name: student-task-backend
+    env: node
+    plan: free
+    region: singapore
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
