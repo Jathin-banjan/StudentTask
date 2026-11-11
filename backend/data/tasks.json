@@ -1,0 +1,14 @@
+[
+  {
+    "title": "Lab 1: React Component Hierarchy",
+    "description": "Document stateful vs stateless components",
+    "subject": "Web Technologies",
+    "priority": "High",
+    "dueDate": "2026-11-20",
+    "status": "Pending",
+    "_id": "3b8422df4170cb45ec75911e",
+    "id": "67bbb06d6aecf350e76bac97",
+    "createdAt": "2026-11-10T13:40:46.436Z",
+    "updatedAt": "2026-11-10T13:40:46.436Z"
+  }
+]

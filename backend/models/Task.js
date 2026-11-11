@@ -1,0 +1,295 @@
+import mongoose from 'mongoose';
+import fs from 'fs';
+import path from 'path';
+import crypto from 'crypto';
+import { fileURLToPath } from 'url';
+import { isConnectedToMongoDB } from '../config/db.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DATA_DIR = path.join(__dirname, '../data');
+const DATA_FILE = path.join(DATA_DIR, 'tasks.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+/* ==========================================================================
+   1. STANDARD MONGOOSE SCHEMA & MODEL
+   ========================================================================== */
+const taskSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, 'Task title is required'],
+      trim: true,
+      maxlength: [120, 'Title cannot exceed 120 characters'],
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    subject: {
+      type: String,
+      required: [true, 'Subject is required'],
+      trim: true,
+      maxlength: [80, 'Subject cannot exceed 80 characters'],
+    },
+    priority: {
+      type: String,
+      required: [true, 'Priority level is required'],
+      enum: {
+        values: ['High', 'Medium', 'Low'],
+        message: 'Priority must be either High, Medium, or Low',
+      },
+      default: 'Medium',
+    },
+    dueDate: {
+      type: String,
+      required: [true, 'Due date is required'],
+      trim: true,
+    },
+    status: {
+      type: String,
+      enum: {
+        values: ['Pending', 'Completed'],
+        message: 'Status must be either Pending or Completed',
+      },
+      default: 'Pending',
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+taskSchema.virtual('id').get(function () {
+  return this._id.toHexString();
+});
+taskSchema.set('toJSON', { virtuals: true });
+taskSchema.set('toObject', { virtuals: true });
+
+const MongooseTask = mongoose.model('Task', taskSchema);
+
+/* ==========================================================================
+   2. PERSISTENT JSON DOCUMENT ENGINE (FALLBACK FOR DEMO / OFFLINE EVALUATION)
+   ========================================================================== */
+
+const readTasksFromFile = () => {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
+      return [];
+    }
+    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
+    return JSON.parse(raw || '[]');
+  } catch (err) {
+    console.error('Error reading tasks file:', err);
+    return [];
+  }
+};
+
+const writeTasksToFile = (tasks) => {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(tasks, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Error writing tasks file:', err);
+  }
+};
+
+// Wrap raw task object with document methods (e.g. save())
+const wrapDocument = (rawTask) => {
+  if (!rawTask) return null;
+  const doc = {
+    ...rawTask,
+    _id: rawTask._id || rawTask.id,
+    id: rawTask._id || rawTask.id,
+    createdAt: rawTask.createdAt ? new Date(rawTask.createdAt) : new Date(),
+    async save() {
+      const all = readTasksFromFile();
+      const idx = all.findIndex((t) => t._id === this._id || t.id === this._id);
+      const toSave = {
+        _id: this._id,
+        id: this.id,
+        title: this.title,
+        description: this.description || '',
+        subject: this.subject,
+        priority: this.priority,
+        dueDate: this.dueDate,
+        status: this.status,
+        createdAt: this.createdAt instanceof Date ? this.createdAt.toISOString() : this.createdAt,
+        updatedAt: new Date().toISOString(),
+      };
+
+      if (idx >= 0) {
+        all[idx] = toSave;
+      } else {
+        all.push(toSave);
+      }
+      writeTasksToFile(all);
+      return wrapDocument(toSave);
+    },
+  };
+  return doc;
+};
+
+// Chainable query object to support Task.find(query).sort(...)
+class FileQuery {
+  constructor(query = {}) {
+    this.query = query;
+    this.sortCriteria = null;
+  }
+
+  sort(criteria) {
+    this.sortCriteria = criteria;
+    return this;
+  }
+
+  async exec() {
+    let tasks = readTasksFromFile();
+
+    // Filter by status
+    if (this.query.status && this.query.status !== 'All') {
+      tasks = tasks.filter((t) => t.status === this.query.status);
+    }
+
+    // Filter by priority
+    if (this.query.priority && this.query.priority !== 'All') {
+      tasks = tasks.filter((t) => t.priority === this.query.priority);
+    }
+
+    // Search query with $or
+    if (this.query.$or && Array.isArray(this.query.$or)) {
+      tasks = tasks.filter((t) => {
+        return this.query.$or.some((condition) => {
+          if (condition.title) {
+            return condition.title.test(t.title || '');
+          }
+          if (condition.subject) {
+            return condition.subject.test(t.subject || '');
+          }
+          return false;
+        });
+      });
+    }
+
+    // Sort if specified
+    if (this.sortCriteria) {
+      if (this.sortCriteria.createdAt === -1) {
+        tasks.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      } else if (this.sortCriteria.createdAt === 1) {
+        tasks.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      }
+    }
+
+    return tasks.map(wrapDocument);
+  }
+
+  // Make FileQuery thenable so await Task.find(...) works directly
+  then(resolve, reject) {
+    return this.exec().then(resolve, reject);
+  }
+}
+
+/**
+ * Universal Task Adapter:
+ * Automatically uses real Mongoose when MongoDB is connected,
+ * or switches to persistent file-backed JSON document store during offline demonstration.
+ */
+class Task {
+  constructor(data = {}) {
+    if (isConnectedToMongoDB) {
+      return new MongooseTask(data);
+    }
+
+    const id = crypto.randomBytes(12).toString('hex');
+    this._id = id;
+    this.id = id;
+    this.title = data.title;
+    this.description = data.description || '';
+    this.subject = data.subject;
+    this.priority = data.priority || 'Medium';
+    this.dueDate = data.dueDate;
+    this.status = data.status || 'Pending';
+    this.createdAt = new Date().toISOString();
+  }
+
+  async save() {
+    return wrapDocument(this).save();
+  }
+
+  static find(query = {}) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.find(query);
+    }
+    return new FileQuery(query);
+  }
+
+  static async findById(id) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.findById(id);
+    }
+    const tasks = readTasksFromFile();
+    const match = tasks.find((t) => t._id === id || t.id === id);
+    return match ? wrapDocument(match) : null;
+  }
+
+  static async findByIdAndUpdate(id, updates, options = {}) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.findByIdAndUpdate(id, updates, options);
+    }
+    const tasks = readTasksFromFile();
+    const idx = tasks.findIndex((t) => t._id === id || t.id === id);
+    if (idx === -1) return null;
+
+    tasks[idx] = {
+      ...tasks[idx],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    writeTasksToFile(tasks);
+    return wrapDocument(tasks[idx]);
+  }
+
+  static async findByIdAndDelete(id) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.findByIdAndDelete(id);
+    }
+    const tasks = readTasksFromFile();
+    const idx = tasks.findIndex((t) => t._id === id || t.id === id);
+    if (idx === -1) return null;
+
+    const deleted = tasks.splice(idx, 1)[0];
+    writeTasksToFile(tasks);
+    return wrapDocument(deleted);
+  }
+
+  static async countDocuments(query = {}) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.countDocuments(query);
+    }
+    const tasks = readTasksFromFile();
+    return tasks.length;
+  }
+
+  static async insertMany(docs) {
+    if (isConnectedToMongoDB) {
+      return MongooseTask.insertMany(docs);
+    }
+    const tasks = readTasksFromFile();
+    const newDocs = docs.map((d) => ({
+      ...d,
+      _id: d._id || crypto.randomBytes(12).toString('hex'),
+      id: d.id || d._id || crypto.randomBytes(12).toString('hex'),
+      createdAt: d.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+    tasks.push(...newDocs);
+    writeTasksToFile(tasks);
+    return newDocs.map(wrapDocument);
+  }
+}
+
+export default Task;

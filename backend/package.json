@@ -1,0 +1,33 @@
+{
+  "name": "student-task-manager-backend",
+  "version": "1.0.0",
+  "description": "Express and Apollo Server GraphQL backend for Student Task Manager",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node test-server.js"
+  },
+  "keywords": [
+    "mern",
+    "graphql",
+    "apollo-server",
+    "express",
+    "mongodb",
+    "mongoose"
+  ],
+  "author": "MCA Student",
+  "license": "ISC",
+  "dependencies": {
+    "@apollo/server": "^4.11.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "graphql": "^16.10.0",
+    "mongoose": "^8.9.5"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.1.3"
+  }
+}
